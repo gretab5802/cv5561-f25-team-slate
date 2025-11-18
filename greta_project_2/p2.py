@@ -22,13 +22,13 @@ def find_match(img1, img2):
     kps1, desc1 = sift.detectAndCompute(img1, None)
     kps2, desc2 = sift.detectAndCompute(img2, None)
 
-    # Guard against degenerate cases (no features found)
+    # if no features found
     if desc1 is None or desc2 is None or len(desc1) < 2 or len(desc2) < 2:
         x1 = np.zeros((0, 2), dtype=np.float32)
         x2 = np.zeros((0, 2), dtype=np.float32)
         return x1, x2
 
-    # Nearest-neighbor search, 2 nearest neighbors
+    # Nearest-neighbor search (2 nearest neighbors)
     nn_12 = NearestNeighbors(n_neighbors=2).fit(desc2)
     dists_12, idxs_12 = nn_12.kneighbors(desc1)
 
