@@ -8,12 +8,19 @@ import sklearn
 from cv2 import SIFT_create, KeyPoint_convert, filter2D
 from sklearn.neighbors import NearestNeighbors
 from scipy import interpolate
+import sys
 
 import cv2
+from groupSlate import *
+
+def master(filename, template, mode = 'Normal'):
+    result = extractVidFrames(filename, template, debug = True)
 
 # Get frames of the video(s)
-def extractVidFrames(filename, start_frame=0, end_frame=-1, skip=10, debug = False):
+def extractVidFrames(filename, template, start_frame=0, end_frame=-1, skip=6, debug = False):
     results = None
+    good_frame_found = False
+    dark_mode = True
     cap = cv2.VideoCapture(filename)
     # Get the frame rate
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -35,9 +42,111 @@ def extractVidFrames(filename, start_frame=0, end_frame=-1, skip=10, debug = Fal
         # If the frame is empty, break out of the loop
         if not ret:
             break
-        cap.release()
-        print("cap release")
-        return results
+        
+        # Increment the frame counter
+        frame_count += 1
+
+        # Save the frame as an image
+        if frame_count%skip == 0 or (good_frame_found == True and (frame_count%skip == 1 or frame_count%skip == 2)):
+            good_frame_found = False
+            if frame_count >= start_frame and ((frame_count <= end_frame) or (end_frame == -1)):
+                if debug:
+                    print(f"frame num: {frame_count}!")
+                    #print(f"last captured frame num: {captFrame}!")
+                    cv2.imwrite('frame_{}.jpeg'.format(frame_count), frame)
+                    frameFile = ('frame_{}.jpeg'.format(frame_count))
+                    print(f'frameFile {frameFile}')
+                #do sift
+                target = cv2.imread(frameFile)
+                target = cv2.cvtColor(target, cv2.COLOR_BGR2GRAY) 
+                #template = np.array(template.convert('L'))
+                #target = frameFile
+                x1, x2 = find_matchGG(template, target)
+                if x1 is None:
+                    print('x1 is none')
+                    continue
+                #visualize_find_match(template, target, x1, x2)
+
+                ransac_thr = 3.0
+                ransac_iter = 1000
+                # ----------
+
+                A = align_image_using_featureA(x1, x2, ransac_thr, ransac_iter)
+                print(f'A is {A} for frame {frame_count}')
+                #if A is reasonable: # reasonable is defined as if the lines that meet in the corner are close to purpendicular
+                #find the corner locations based on applying A to each corner location of the template
+                #calculate the lines
+                #calculate the angle between the lines to see how square it is
+
+                #also if a point is not in the image it may be bad
+                if A is None:
+                    print('A is none')
+                    continue
+                visualize_align_image_using_feature(template, target, x1, x2, A, ransac_thr)
+
+
+                img_warped = warp_imageA(target, A, template.shape) #save the warped image to read the text from
+                cv2.imwrite('img_warped_{}.jpeg'.format(frame_count), img_warped)
+                #plt.imshow(img_warped, cmap='gray', vmin=0, vmax=255)
+                #plt.axis('off')
+                #plt.show()
+                if dark_mode == True:
+                    img_warped = cv2.convertScaleAbs(img_warped, alpha=2.5, beta=50)
+
+                st = extractSceneAndTake(img_warped, debug)
+                results.append(st)
+                print(f'scene and take {results}')
+                #if scene and take are good check the next frame too
+                # if st is a number letter then number
+                if st[0] == '1c' or st[1] == '2': #place holder for actual test
+                    good_frame_found = True
+
+
+            #then we read the slate
+
+
+            #esi = extractSlateImg(frameFile)#matrix representing the image itself an ndarray
+            #print(esi)
+            #print(type(esi))
+            # if isinstance(esi, np.ndarray):
+            #     st = extractSceneAndTake(esi, debug)
+            #     captFrame = frame_count
+            #     if debug:
+            #         cv2.imwrite('slate_{}.jpg'.format(frame_count), esi)
+            #         print(f"Found scene/take: {st}")
+            #     results.append(st)
+            # elif len(results) > 6:
+            #     if debug:
+            #         print("found at least 6")
+            #         print(f"results: {results}")
+            #     cap.release()
+            #     return results
+            # #print(f"frame_count - captFrame = {frame_count - captFrame}")
+            # #print(f"length of results: {len(results)}")
+            # if (len(results) >= 1) and ((frame_count - captFrame) > 200):
+            #     if debug:
+            #         print("found at least 1, but now the slate is gone")
+            #         print(f"results: {results}")
+            #     cap.release()
+            #     print("cap release")
+            #     return results
+            # if (len(results) == 0) and ((frame_count - captFrame) > 500):
+            #     if debug:
+            #         print("found none, can't find slate")
+            #         print(f"results: {results}")
+            #     cap.release()
+            #     print("cap release")
+            #     return results
+
+            #elif esi == 0:
+
+    #make it stop watching at a threshold
+    # Release the video capture object
+    if debug:
+        print("went through entire video")
+        print(f"results: {results}")
+    cap.release()
+    return results
     
 
 
@@ -129,15 +238,134 @@ def extractVidFrames(filename, start_frame=0, end_frame=-1, skip=10, debug = Fal
 #     cap.release()
 #     return results
 
+def find_matchA(img1, img2):
+    x1, x2 = None, None
+    dis_thr = 0.7
+    
+    ## create sift object
+    sift = SIFT_create()
 
-def find_match(img1, img2):
+    kp1, des1 = sift.detectAndCompute(img1, None)
+    kp2, des2 = sift.detectAndCompute(img2, None)
+
+    kp1 = KeyPoint_convert(kp1)
+    kp2 = KeyPoint_convert(kp2)
+
+    ## forward matching: img1 -> img2
+    neighbors = NearestNeighbors(n_neighbors=2, algorithm='auto').fit(des2)
+    distances, indices = neighbors.kneighbors(des1)
+
+    ## backward matching: img2 -> img1 (for cross-check)
+    neighbors_back = NearestNeighbors(n_neighbors=2, algorithm='auto').fit(des1)
+    distances_back, indices_back = neighbors_back.kneighbors(des2)
+
+    good_matches = []
+
+    for i in range(len(distances)):
+        dis_closest = distances[i][0]
+        dis_second = distances[i][1]
+        
+        if dis_second > 0 and (dis_closest / dis_second) < dis_thr:
+            j = indices[i][0]  ## best match in img2
+
+            ## apply Lowe's ratio test for backward match as well
+            dis_back_closest = distances_back[j][0]
+            dis_back_second = distances_back[j][1]
+            
+            ## cross-check: verify that img2[j]'s best match is img1[i]
+            ## AND that backward match also passes ratio test
+            if (indices_back[j][0] == i and 
+                dis_back_second > 0 and 
+                (dis_back_closest / dis_back_second) < dis_thr):
+                good_matches.append((i, j))
+    
+    x1 = np.zeros((len(good_matches), 2))
+    x2 = np.zeros((len(good_matches), 2))
+
+    for idx, (i, j) in enumerate(good_matches):
+        x1[idx] = kp1[i]
+        x2[idx] = kp2[j]
+
+    if len(x1) < 4:
+        x1 = None
+        x2 = None
+
+    return x1, x2
+
+def align_image_using_featureA(x1, x2, ransac_thr, ransac_iter):
+    A = None
+
+    n = x1.shape[0]
+    
+    ## need at least 3 points for affine transform
+    if n < 3:
+        return np.eye(3)
+    
+    best_inliers = []
+    best_A = None
+    
+    ## RANSAC iterations
+    for iteration in range(ransac_iter):
+        ## randomly sample 3 points
+        ## np.random.choice returns indices!!!
+        indices = np.random.choice(n, size=3, replace=False)
+        sample_x1 = x1[indices]
+        sample_x2 = x2[indices]
+        
+        ## compute affine transform from these 3 points
+        A = compute_affine_transform(sample_x1, sample_x2)
+        
+        if A is None:
+            continue
+        
+        ## transform all x1 points using this affine matrix
+        ## convert x1 to homogeneous coordinates (n x 3)
+        x1_h = np.hstack([x1, np.ones((n, 1))])
+        
+        ## transform: x2_pred = A * x1
+        ## x2_pred will be (n x 3), we take first 2 columns
+        x2_pred = (A @ x1_h.T).T
+        x2_pred = x2_pred[:, :2]  ## remove homogeneous coordinate
+        
+        ## compute errors (Euclidean distance)
+        ## errors[i] = distance between predicted and actual point
+        errors = np.sqrt(np.sum((x2_pred - x2)**2, axis=1))
+        
+        ## find inliers (points with error < threshold)
+        inliers = np.where(errors < ransac_thr)[0]
+        
+        ## keep track of best model (one with most inliers)
+        if len(inliers) > len(best_inliers):
+            best_inliers = inliers
+            best_A = A
+    
+    ## refine the affine transform using ALL inliers
+    ## this gives better accuracy than using just 3 random points
+    # add aditional layer to check if A is crazy or realistic
+    if len(best_inliers) >= 3:
+        best_A = compute_affine_transform(x1[best_inliers], x2[best_inliers])
+    else:
+        A = None
+    
+    ## ff RANSAC failed to find any good model, just return identity - reminder to me that this means error and need to check somethign 
+    #if best_A is None:
+    #    best_A = np.eye(3)
+
+    return best_A
+
+def find_matchGG(img1, img2):
     x1, x2 = None, None
     dis_thr = .7
+    alpha = 2.5  # Contrast control (1.0-3.0)
+    beta = 50    # Brightness control (0-100)
+    #adjusted_img1 = cv2.convertScaleAbs(img1, alpha=alpha, beta=beta)
+    #if darkmode
+    adjusted_img2 = cv2.convertScaleAbs(img2, alpha=alpha, beta=beta)
 
     sift = SIFT_create()
 
     kp1, des1 = sift.detectAndCompute(img1,None) #points are similar if the descriptprs are similar
-    kp2, des2 = sift.detectAndCompute(img2,None)
+    kp2, des2 = sift.detectAndCompute(adjusted_img2,None)
     kpAH = KeyPoint_convert(kp1)
     kpBH = KeyPoint_convert(kp2)
     print(f'key points are: {kpAH}, \n {kpBH}')
@@ -172,6 +400,9 @@ def find_match(img1, img2):
     # nearest neighbor
     x1 = np.array(kp1HKeep)
     x2 = np.array(kp2HKeep)
+    if len(x1) < 5:
+        x1 = None
+        x2 = None
     #   x1      x2
     # [x,y] - [x,y]
     # . . . . 
@@ -180,8 +411,8 @@ def find_match(img1, img2):
     return x1, x2
 
 
-def align_image_using_feature(x1, x2, ransac_thr, ransac_iter):
-    A = 0
+def align_image_using_featureGG(x1, x2, ransac_thr, ransac_iter):
+    A = None
 
     # To do
     Esums = []
@@ -247,7 +478,59 @@ def align_image_using_feature(x1, x2, ransac_thr, ransac_iter):
     # find and report A from the best model
     return A
 
-def warp_image(img, A, output_size):
+def warp_imageA(img, A, output_size):
+    img_warped = None
+
+    h_out, w_out = output_size
+    h_in, w_in = img.shape
+    
+    ## create grid of (x, y) coordinates in output image 
+    x_out, y_out = np.meshgrid(np.arange(w_out), np.arange(h_out))
+
+    coords_out = np.vstack([
+        x_out.ravel(),
+        y_out.ravel(),
+        np.ones((h_out * w_out))
+    ])  # 3 x (h_out*w_out) <- what shape of coords_out should be
+
+    ## compute inverse mapping
+    A_inv = np.linalg.inv(A)
+
+    ## ACTUALLY it seems that A is already the inverse so we dont have to invert it -.-
+    coords_in = A @ coords_out  # 3 x N
+    
+    ## extract x and y coordinates (no division needed for affine? i think need to double chekc)
+    x_in = coords_in[0, :]  # x coordinates in input image
+    y_in = coords_in[1, :]  # y coordinates in input image
+    
+    ## define the grid for interpn (row, column)
+    points = (np.arange(h_in), np.arange(w_in))
+    
+    ## stack coordinates as (N, 2) in (row, col) order = (y, x) order
+    xi = np.column_stack([y_in, x_in])
+    
+    ## interpolate pixel values using interpn - this might be giving me error idk
+    img_warped_flat = interpolate.interpn(
+        points=points,
+        values=img,
+        xi=xi,
+        method='linear',
+        bounds_error=False,
+        fill_value=0
+    )
+    
+    ## reshape to output dimensions
+    img_warped = img_warped_flat.reshape((h_out, w_out))
+
+    ## print("output size")
+    ## print(np.meshgrid(np.arange(w_out), np.arange(h_out))[0].shape)
+
+    ## print("img_warped size")
+    ## print(img_warped.shape)
+
+    return img_warped
+
+def warp_imageGG(img, A, output_size):
     img_warped = None
     width = img.shape[0]
     height = img.shape[1]
@@ -328,7 +611,7 @@ def align_image(template, target, A):
     err = 0
     print('enter while loop')
     while True:
-        warped = warp_image(target, A_refined, [H, W])
+        warped = warp_imageA(target, A_refined, [H, W])
         Ierr = warped - template
         Ierr_expanded = Ierr[:, :, np.newaxis] 
         errors.append(np.linalg.norm(Ierr, ord=2))
@@ -379,12 +662,52 @@ def track_multi_frames(template, img_list):
     ransac_thr = 45 
     ransac_iter = 1000
     for i in range(len(img_list)):
-        x1, x2 = find_match(template, img_list[i])
-        A = align_image_using_feature(x1, x2, ransac_thr, ransac_iter)
+        x1, x2 = find_matchA(template, img_list[i])
+        A = align_image_using_featureA(x1, x2, ransac_thr, ransac_iter)
         A_refined, errors = align_image(template, img_list[i], A)
         A_list.append(A_refined)
         errors_list.append(errors)
     return A_list, errors_list
+
+#helper funcs for Anthony
+
+def compute_affine_transform(x1, x2):
+    n = x1.shape[0]
+    
+    ## we need at least 3 points for affine transformation so ned to check here
+    if n < 3:
+        return None
+    
+    ## convert to homogeneous coordinates
+    x1_h = np.hstack([x1, np.ones((n, 1))])
+
+    
+    ## build matrix M (2n x 6) and vector b (2n x 1)
+    M = np.zeros((2*n, 6))
+    b = np.zeros((2*n, 1))
+    
+    for i in range(n):
+        ## first row for x-coordinate
+        M[2*i, 0:3] = x1_h[i]
+        ## second row for y-coordinate  
+        M[2*i+1, 3:6] = x1_h[i]
+        
+        b[2*i] = x2[i, 0]          # x2_i
+        b[2*i+1] = x2[i, 1]        # y2_i
+    
+    ## solve the linear system: M * params = b
+    ## params === [a, b, tx, c, d, ty]^T
+    params, _, _, _ = np.linalg.lstsq(M, b, rcond=None)
+    params = params.flatten()
+    
+    ## build affine matrix
+    A = np.array([
+        [params[0], params[1], params[2]],
+        [params[3], params[4], params[5]],
+        [0,         0,         1        ]
+    ])
+    
+    return A
 
 # ----- Visualization Functions -----
 def visualize_find_match(img1, img2, x1, x2, img_h=500):
@@ -437,8 +760,8 @@ def visualize_align_image_using_feature(img1, img2, x1, x2, A, ransac_thr, img_h
 
 def visualize_align_image(template, target, A, A_refined, errors=None):
     import cv2
-    img_warped_init = warp_image(target, A, template.shape)
-    img_warped_optim = warp_image(target, A_refined, template.shape)
+    img_warped_init = warp_imageA(target, A, template.shape)
+    img_warped_optim = warp_imageA(target, A_refined, template.shape)
     err_img_init = np.abs(img_warped_init - template)
     err_img_optim = np.abs(img_warped_optim - template)
     img_warped_init = np.uint8(img_warped_init)
@@ -524,22 +847,29 @@ def visualize_track_multi_frames(template, img_list, A_list, errors_list=None):
             plt.show()
 # ----- Visualization Functions -----
 
-if __name__=='__main__':
+if __name__=='__mainx__':
 
     template = Image.open('templatefull.jpeg')
     template = np.array(template.convert('L'))
     
     target_list = []
+    for filename in sys.argv[1:]:
+        file = filename
+        #proccessAndRenameVid(filename, True)
     #target = Image.open(f'target{i}.jpg')
     #target = np.array(target.convert('L'))
     #target_list.append(target)
+
+    #do get frames thing here
+    extractVidFrames(file)
     for i in range(4):
         target = Image.open(f'target{i+1}.jpeg')
         target = np.array(target.convert('L'))
         target_list.append(target)
     
-    x1, x2 = find_match(template, target_list[0])
+    x1, x2 = find_matchA(template, target_list[0])
     print(f'x1, x2: {x1} .\n.\n. {x2}')
+
     visualize_find_match(template, target_list[0], x1, x2)
 
     # To do
@@ -547,10 +877,10 @@ if __name__=='__main__':
     ransac_iter = 1000
     # ----------
     
-    A = align_image_using_feature(x1, x2, ransac_thr, ransac_iter)
+    A = align_image_using_featureA(x1, x2, ransac_thr, ransac_iter)
     visualize_align_image_using_feature(template, target_list[0], x1, x2, A, ransac_thr)
 
-    img_warped = warp_image(target_list[0], A, template.shape)
+    img_warped = warp_imageA(target_list[0], A, template.shape)
     plt.imshow(img_warped, cmap='gray', vmin=0, vmax=255)
     plt.axis('off')
     plt.show()
