@@ -30,7 +30,7 @@ frameInterval = 6; ## extract every 6th frame (must be multiple of 2)
 breakProcessingEarly = True; ## set to True to only process first 10 frames
 showVisualizations = False; ## set to True to display viz
 trOCRModelName = 'microsoft/trocr-base-handwritten'; ## model for text extraction
-## 
+## Extracted + Processed texts: ['GAZI', 'GATE', 'GAL1', 'GLA', 'GLA', 'GAF', 'GF', 'GLAZED', '8A1', 'BA751']
 
 # trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
 ## Extracted + Processed texts: ['8A1', '8A1', '8A1', '8A', '8A', '8A', '8A', '8A', '8A1']
@@ -38,11 +38,9 @@ trOCRModelName = 'microsoft/trocr-base-handwritten'; ## model for text extractio
 # trOCRModelName = 'microsoft/trocr-large-stage1'; ## model for text extraction
 ## Extracted + Processed texts: ['BAL', '8A', 'BAL', 'BA', '8A', '8A', '8A', 'BA', 'BAL', 'BAL']
 
-# trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
-##
+# trOCRModelName = 'microsoft/trocr-large-printed'; ## model for text extraction
+## Extracted + Processed texts: ['BA', '8A', '8A', 'BA', '8A', '8A', '8A', 'BA', 'TOTAL', 'BAUL']
 
-# trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
-##
 
 # ----- Main Project Function -----
 

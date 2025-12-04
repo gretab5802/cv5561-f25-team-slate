@@ -514,7 +514,7 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
             cv2.rectangle(vis_frame_rgb, 
                          (middle_col_start, top_row_start), 
                          (middle_col_end, top_row_end), 
-                         (255, 0, 0), 20);  # red rectangle, thickness 3
+                         (255, 0, 0), 20);  # red rectangle, thickness 20
             
             plt.subplot(rows, cols, i + 1);
             plt.imshow(vis_frame_rgb);
