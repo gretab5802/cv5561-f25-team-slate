@@ -18,6 +18,9 @@ authors:
 - Greta
 '''
 
+import os
+from collections import Counter
+
 import cv2 as opencv
 import matplotlib.pyplot as plt
 
@@ -100,6 +103,28 @@ if __name__=='__main__':
     
     print(f'\nExtracted + Processed texts: {extracted_texts}\n');
     
-    ## TODO: find most common name
-    ## TODO: rename video file
+    ## find most common extracted text
+    if len(extracted_texts) == 0:
+        print("No text extracted, leaving original video file unchanged.")
+    else:
+        # Counter just counts most frequent item in a list but is nice because
+        # you don't have to write a loop and has useful built in functions
+        counts = Counter(extracted_texts)
+        most_common_text, most_common_count = counts.most_common(1)[0]
+        print(f"Most common extracted text: {most_common_text}")
+
+        # build new filename
+        original_dir = os.path.dirname(videoFilePath)
+        original_basename = os.path.basename(videoFilePath)      # this gets us "8A.mp4"
+        original_stem, original_ext = os.path.splitext(original_basename)  # gives us "8A", ".mp4"
+
+        new_basename = f"{most_common_text}.{original_stem}{original_ext}"  # append most common text found
+        new_path = os.path.join(original_dir, new_basename)
+
+        # rename file
+        try:
+            os.rename(videoFilePath, new_path)
+            print(f"Renamed video file to: {new_path}")
+        except OSError as e:
+            print(f"Failed to rename file: {e}")
 
