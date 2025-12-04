@@ -1,10 +1,5 @@
 '''
-Docstring for helperfunctions
-
 helper functions included in this file:
-
-- extractVidFrames
-- extract_frames_at_interval
 
 '''
 import numpy as np
@@ -370,8 +365,8 @@ def trackMultiFrames(template, img_list, breakProcessingEarly):
     
     for i, target_img in enumerate(img_list):
 
-        if breakProcessingEarly and i >= 9:
-            print("Breaking at frame 9 for testing purposes.")
+        if breakProcessingEarly and i >= 10:
+            print("Breaking at frame 10 for testing purposes.")
             break
 
         print(f"Processing frame {i+1}/{len(img_list)}...")
@@ -519,7 +514,7 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
             cv2.rectangle(vis_frame_rgb, 
                          (middle_col_start, top_row_start), 
                          (middle_col_end, top_row_end), 
-                         (0, 255, 0), 3);  # Green rectangle, thickness 3
+                         (255, 0, 0), 20);  # red rectangle, thickness 3
             
             plt.subplot(rows, cols, i + 1);
             plt.imshow(vis_frame_rgb);

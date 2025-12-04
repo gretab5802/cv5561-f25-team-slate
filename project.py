@@ -29,8 +29,20 @@ videoFilePath = 'videos/8A.mp4'; ## change this for different video files
 frameInterval = 6; ## extract every 6th frame (must be multiple of 2)
 breakProcessingEarly = True; ## set to True to only process first 10 frames
 showVisualizations = False; ## set to True to display viz
-# trOCRModelName = 'microsoft/trocr-base-handwritten'; ## model for text extraction
-trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
+trOCRModelName = 'microsoft/trocr-base-handwritten'; ## model for text extraction
+## 
+
+# trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
+## Extracted + Processed texts: ['8A1', '8A1', '8A1', '8A', '8A', '8A', '8A', '8A', '8A1']
+
+# trOCRModelName = 'microsoft/trocr-large-stage1'; ## model for text extraction
+## Extracted + Processed texts: ['BAL', '8A', 'BAL', 'BA', '8A', '8A', '8A', 'BA', 'BAL', 'BAL']
+
+# trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
+##
+
+# trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
+##
 
 # ----- Main Project Function -----
 
@@ -44,6 +56,31 @@ if __name__=='__main__':
     extractedFrames = helpers.extractFrames(videoFilePath, frameInterval);
     
     print(f'extracted {len(extractedFrames)} frames\n');
+
+    if showVisualizations:
+        print('displaying template and all extrated frames...\n');
+    
+        num_frames = len(extractedFrames);
+        cols = min(4, num_frames + 1);  ## Max 4 columns
+        rows = (num_frames + 1 + cols - 1) // cols;  ## Calculate rows needed
+    
+        plt.figure(figsize=(cols * 4, rows * 3));
+    
+        ## Show template in first subplot
+        plt.subplot(rows, cols, 1);
+        plt.imshow(template, cmap='gray', vmin=0, vmax=255);
+        plt.title('Template');
+        plt.axis('off');
+    
+        ## Show all warped frames
+        for i, warped_frame in enumerate(extractedFrames):
+            plt.subplot(rows, cols, i + 2);
+            plt.imshow(warped_frame, cmap='gray', vmin=0, vmax=255);
+            plt.title(f'Frame {i+1}');
+            plt.axis('off');
+    
+        plt.tight_layout();
+        plt.show();
     
     ## convert extracted frames to grayscale for processing
     print('converting frames to grayscale...\n');
