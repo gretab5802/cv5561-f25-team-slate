@@ -24,31 +24,31 @@ def getTemplateImage():
     return template;
 
 def getVideoFile(filepath):
-    video_file = filepath;
-    return video_file;
+    videoFile = filepath;
+    return videoFile;
 
-def extractFrames(video_filepath, frame_interval):
+def extractFrames(videoFilepath, frameInterval):
     '''
     Extract frames from a video at specified intervals.
     
     Parameters:
-    - video_filepath (str): Path to the video file
-    - frame_interval (int): Extract every Nth frame (e.g., 6 means extract every 6th frame)
+    - videoFilepath (str): Path to the video file
+    - frameInterval (int): Extract every Nth frame (e.g., 6 means extract every 6th frame)
     
     Returns:
     - extracted_frames (list): List of extracted frames as numpy arrays
     '''
     
-    extracted_frames = []
+    extractedFrames = []
     
     # Open the video file
-    cap = cv2.VideoCapture(video_filepath)
+    cap = cv2.VideoCapture(videoFilepath)
     
     if not cap.isOpened():
-        print(f"Error: Could not open video file {video_filepath}\n")
-        return extracted_frames
+        print(f"Error: Could not open video file {videoFilepath}\n")
+        return extractedFrames
     
-    frame_count = 0
+    frameCount = 0
     
     # Loop through the video frames
     while cap.isOpened():
@@ -59,19 +59,19 @@ def extractFrames(video_filepath, frame_interval):
             break
         
         # Extract frame if it's at the specified interval
-        if frame_count % frame_interval == 0:
-            extracted_frames.append(frame)
+        if frameCount % frameInterval == 0:
+            extractedFrames.append(frame)
         
-        frame_count += 1
+        frameCount += 1
     
     # Release the video capture object
     cap.release()
     
-    return extracted_frames
+    return extractedFrames
 
 def findMatch(img1, img2):
     x1, x2 = None, None
-    dis_thr = 0.7
+    disThr = 0.7
     
     ## create sift object
     sift = SIFT_create()
@@ -87,39 +87,39 @@ def findMatch(img1, img2):
     distances, indices = neighbors.kneighbors(des1)
 
     ## backward matching: img2 -> img1 (for cross-check)
-    neighbors_back = NearestNeighbors(n_neighbors=2, algorithm='auto').fit(des1)
-    distances_back, indices_back = neighbors_back.kneighbors(des2)
+    neighborsBack = NearestNeighbors(n_neighbors=2, algorithm='auto').fit(des1)
+    distancesBack, indices_back = neighborsBack.kneighbors(des2)
 
-    good_matches = []
+    goodMatches = []
 
     for i in range(len(distances)):
-        dis_closest = distances[i][0]
-        dis_second = distances[i][1]
+        disClosest = distances[i][0]
+        disSecond = distances[i][1]
         
-        if dis_second > 0 and (dis_closest / dis_second) < dis_thr:
+        if disSecond > 0 and (disClosest / disSecond) < disThr:
             j = indices[i][0]  ## best match in img2
 
             ## apply Lowe's ratio test for backward match as well
-            dis_back_closest = distances_back[j][0]
-            dis_back_second = distances_back[j][1]
+            disBackClosest = distancesBack[j][0]
+            disBackSecond = distancesBack[j][1]
             
             ## cross-check: verify that img2[j]'s best match is img1[i]
             ## AND that backward match also passes ratio test
             if (indices_back[j][0] == i and 
-                dis_back_second > 0 and 
-                (dis_back_closest / dis_back_second) < dis_thr):
-                good_matches.append((i, j))
+                disBackSecond > 0 and 
+                (disBackClosest / disBackSecond) < disThr):
+                goodMatches.append((i, j))
     
-    x1 = np.zeros((len(good_matches), 2))
-    x2 = np.zeros((len(good_matches), 2))
+    x1 = np.zeros((len(goodMatches), 2))
+    x2 = np.zeros((len(goodMatches), 2))
 
-    for idx, (i, j) in enumerate(good_matches):
+    for idx, (i, j) in enumerate(goodMatches):
         x1[idx] = kp1[i]
         x2[idx] = kp2[j]
 
     return x1, x2
 
-def alignImageUsingFeature(x1, x2, ransac_thr, ransac_iter):
+def alignImageUsingFeature(x1, x2, ransacThr, ransactIteration):
     A = None
 
     n = x1.shape[0]
@@ -128,54 +128,54 @@ def alignImageUsingFeature(x1, x2, ransac_thr, ransac_iter):
     if n < 3:
         return np.eye(3)
     
-    best_inliers = []
-    best_A = None
+    bestInliers = []
+    bestA = None
     
     ## RANSAC iterations
-    for iteration in range(ransac_iter):
+    for iteration in range(ransactIteration):
         ## randomly sample 3 points
         ## np.random.choice returns indices!!!
         indices = np.random.choice(n, size=3, replace=False)
-        sample_x1 = x1[indices]
-        sample_x2 = x2[indices]
+        sampleX1 = x1[indices]
+        sampleX2 = x2[indices]
         
         ## compute affine transform from these 3 points
-        A = computeAffineTransform(sample_x1, sample_x2)
+        A = computeAffineTransform(sampleX1, sampleX2)
         
         if A is None:
             continue
         
         ## transform all x1 points using this affine matrix
         ## convert x1 to homogeneous coordinates (n x 3)
-        x1_h = np.hstack([x1, np.ones((n, 1))])
+        x1H = np.hstack([x1, np.ones((n, 1))])
         
-        ## transform: x2_pred = A * x1
-        ## x2_pred will be (n x 3), we take first 2 columns
-        x2_pred = (A @ x1_h.T).T
-        x2_pred = x2_pred[:, :2]  ## remove homogeneous coordinate
+        ## transform: x2Pred = A * x1
+        ## x2Pred will be (n x 3), we take first 2 columns
+        x2Pred = (A @ x1H.T).T
+        x2Pred = x2Pred[:, :2]  ## remove homogeneous coordinate
         
         ## compute errors (Euclidean distance)
         ## errors[i] = distance between predicted and actual point
-        errors = np.sqrt(np.sum((x2_pred - x2)**2, axis=1))
+        errors = np.sqrt(np.sum((x2Pred - x2)**2, axis=1))
         
         ## find inliers (points with error < threshold)
-        inliers = np.where(errors < ransac_thr)[0]
+        inliers = np.where(errors < ransacThr)[0]
         
         ## keep track of best model (one with most inliers)
-        if len(inliers) > len(best_inliers):
-            best_inliers = inliers
-            best_A = A
+        if len(inliers) > len(bestInliers):
+            bestInliers = inliers
+            bestA = A
     
     ## refine the affine transform using ALL inliers
     ## this gives better accuracy than using just 3 random points
-    if len(best_inliers) >= 3:
-        best_A = computeAffineTransform(x1[best_inliers], x2[best_inliers])
+    if len(bestInliers) >= 3:
+        bestA = computeAffineTransform(x1[bestInliers], x2[bestInliers])
     
     ## ff RANSAC failed to find any good model, just return identity - reminder to me that this means error and need to check somethign 
-    if best_A is None:
-        best_A = np.eye(3)
+    if bestA is None:
+        bestA = np.eye(3)
 
-    return best_A
+    return bestA
 
 def warpImage(img, A, output_size):
     img_warped = None
@@ -354,8 +354,8 @@ def trackMultiFrames(template, img_list, breakProcessingEarly):
     errors_list = None
 
     ## parameters for RANSAC
-    ransac_thr = 3.0
-    ransac_iter = 1000
+    ransacThr = 3.0
+    ransactIteration = 1000
     
     A_list = []
     errors_list = []
@@ -382,7 +382,7 @@ def trackMultiFrames(template, img_list, breakProcessingEarly):
             
             x1, x2 = findMatch(current_template, target_img)
             
-            A_init = alignImageUsingFeature(x1, x2, ransac_thr, ransac_iter)
+            A_init = alignImageUsingFeature(x1, x2, ransacThr, ransactIteration)
             
         else:
             ## after initial frame, use previous A as init
@@ -414,7 +414,7 @@ def computeAffineTransform(x1, x2):
         return None
     
     ## convert to homogeneous coordinates
-    x1_h = np.hstack([x1, np.ones((n, 1))])
+    x1H = np.hstack([x1, np.ones((n, 1))])
 
     
     ## build matrix M (2n x 6) and vector b (2n x 1)
@@ -423,9 +423,9 @@ def computeAffineTransform(x1, x2):
     
     for i in range(n):
         ## first row for x-coordinate
-        M[2*i, 0:3] = x1_h[i]
+        M[2*i, 0:3] = x1H[i]
         ## second row for y-coordinate  
-        M[2*i+1, 3:6] = x1_h[i]
+        M[2*i+1, 3:6] = x1H[i]
         
         b[2*i] = x2[i, 0]          # x2_i
         b[2*i+1] = x2[i, 1]        # y2_i
@@ -501,8 +501,8 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
         top_half_height = h // 2;
         
         ## Split top half into 3 columns: left (25%), middle (50%), right (25%)
-        left_col_width = int(w * 0.25);
-        middle_col_width = int(w * 0.50);
+        left_col_width = int(w * 0.30);
+        middle_col_width = int(w * 0.40);
         
         ## Calculate boundaries for top middle region
         top_row_start = 0;
@@ -543,7 +543,10 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
         generated_ids = model.generate(pixel_values);
         extracted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0];
         
+        extracted_texts = processExtractedTexts(extracted_texts);
+        
         extracted_texts.append(extracted_text);
+
         print(f'  Frame {i+1}/{len(warped_frames)}: "{extracted_text}"');
     
     # Show visualization if requested
@@ -552,3 +555,25 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
         plt.show();
     
     return extracted_texts;
+
+def processExtractedTexts(extractedTexts):
+    '''
+    Process extracted texts to clean up and format as needed. For noe it will make all text uppercase and remove spaces and periods.
+    
+    Parameters:
+    - extractedTexts (list): List of raw extracted text strings
+    
+    Returns:
+    - processedTexts (list): List of cleaned/formatted text strings
+    '''
+    
+    processedTexts = [];
+    
+    for text in extracted_texts:
+        text.upper().strip();
+        text.replace(" ", "");
+        text.replace(".", "");
+
+        processedTexts.append(text);
+    
+    return processedTexts
