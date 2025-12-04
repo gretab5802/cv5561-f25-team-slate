@@ -21,7 +21,7 @@ authors:
 import cv2 as opencv
 import matplotlib.pyplot as plt
 
-import helperFunctions as helpers
+import helperfunctions as helpers
 
 # ----- Global Parametsr -----
 
