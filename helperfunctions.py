@@ -9,14 +9,11 @@ helper functions included in this file:
 '''
 import numpy as np
 import cv2
+import matplotlib.pyplot as plt
 
 from PIL import Image
 from transformers import TrOCRProcessor
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
-
-
-import matplotlib.pyplot as plt
-
 from cv2 import SIFT_create, KeyPoint_convert, filter2D
 from sklearn.neighbors import NearestNeighbors
 from scipy import interpolate
@@ -24,6 +21,7 @@ from scipy import interpolate
 def getTemplateImage():
     template = Image.open('template.jpeg');
     template = np.array(template.convert('L'));
+    return template;
 
 def getVideoFile(filepath):
     video_file = filepath;
@@ -339,7 +337,7 @@ def align_image(template, target, A):
     
     return A_refined, errors
 
-def track_multi_frames(template, img_list):
+def track_multi_frames(template, img_list, breakProcessingEarly):
     '''
     Track template across multiple frames using inverse compositional alignment
     
@@ -371,6 +369,11 @@ def track_multi_frames(template, img_list):
     A_prev = None
     
     for i, target_img in enumerate(img_list):
+
+        if breakProcessingEarly and i >= 10:
+            print("Breaking at frame 10 for testing purposes.")
+            break
+
         print(f"Processing frame {i+1}/{len(img_list)}...")
         
         if i == 0:
@@ -461,97 +464,43 @@ def params_to_affine(p):
 
     return A
 
-def generateText():
-    pass
-
-# # Get frames of the video(s)
-# def extractVidFrames(filename, template, start_frame=0, end_frame=-1, skip=6, debug = False):
-#     results = None
-#     good_frame_found = False
-#     dark_mode = True
-
-#     cap = cv2.VideoCapture(filename)
-#     # Get the frame rate
-#     fps = cap.get(cv2.CAP_PROP_FPS)
-#     # print(f"fps: {fps}!")
-#     # Calculate the interval between frames
-#     #interval = 1 / fps
-
-#     # Create a counter to keep track of the frame number
-#     frame_count = 0
-#     #keeps track of most recent frame with slate identified
-#     captFrame = 0
-#     #print(cap.isOpened())
-#     cap.isOpened() == True
-#     results = []
-
-#     # Loop through the frames
-#     while cap.isOpened():
-#         ret, frame = cap.read()
-
-#         # If the frame is empty, break out of the loop
-#         if not ret:
-#             break
+def extract_text_from_frames(warped_frames, model_name):
+    '''
+    Extract text from warped slate frames using TrOCR
+    
+    Parameters:
+    - warped_frames (list): List of warped grayscale frames as numpy arrays
+    - model_name (str): TrOCR model to use for text extraction
+    
+    Returns:
+    - extracted_texts (list): List of extracted text strings, one per frame
+    '''
+    
+    print(f'Loading TrOCR model: {model_name}...\n');
+    
+    processor = TrOCRProcessor.from_pretrained(model_name);
+    model = VisionEncoderDecoderModel.from_pretrained(model_name);
+    
+    extracted_texts = [];
+    
+    print('Extracting text from warped frames...\n');
+    
+    for i, warped_frame in enumerate(warped_frames):
+        # Convert numpy array to PIL Image
+        # Ensure the frame is in uint8 format
+        frame_uint8 = np.clip(warped_frame, 0, 255).astype(np.uint8);
         
-#         # Increment the frame counter
-#         frame_count += 1
-
-#         # Save the frame as an image
-#         if frame_count%skip == 0 or (good_frame_found == True and (frame_count%skip == 1 or frame_count%skip == 2)):
-#             good_frame_found = False
-#             if frame_count >= start_frame and ((frame_count <= end_frame) or (end_frame == -1)):
-#                 if debug:
-#                     print(f"frame num: {frame_count}!")
-#                     #print(f"last captured frame num: {captFrame}!")
-#                     cv2.imwrite('frame_{}.jpeg'.format(frame_count), frame)
-#                     frameFile = ('frame_{}.jpeg'.format(frame_count))
-#                     print(f'frameFile {frameFile}')
-#                 #do sift
-#                 target = cv2.imread(frameFile)
-#                 target = cv2.cvtColor(target, cv2.COLOR_BGR2GRAY) 
-#                 #template = np.array(template.convert('L'))
-#                 #target = frameFile
-#                 x1, x2 = find_matchGG(template, target)
-#                 if x1 is None:
-#                     print('x1 is none')
-#                     continue
-#                 #visualize_find_match(template, target, x1, x2)
-
-#                 ransac_thr = 3.0
-#                 ransac_iter = 1000
-#                 # ----------
-
-#                 A = align_image_using_featureA(x1, x2, ransac_thr, ransac_iter)
-#                 print(f'A is {A} for frame {frame_count}')
-#                 #if A is reasonable: # reasonable is defined as if the lines that meet in the corner are close to purpendicular
-#                 #find the corner locations based on applying A to each corner location of the template
-#                 #calculate the lines
-#                 #calculate the angle between the lines to see how square it is
-
-#                 #also if a point is not in the image it may be bad
-#                 if A is None:
-#                     print('A is none')
-#                     continue
-#                 visualize_align_image_using_feature(template, target, x1, x2, A, ransac_thr)
-
-
-#                 img_warped = warp_imageA(target, A, template.shape) #save the warped image to read the text from
-#                 cv2.imwrite('img_warped_{}.jpeg'.format(frame_count), img_warped)
-#                 #plt.imshow(img_warped, cmap='gray', vmin=0, vmax=255)
-#                 #plt.axis('off')
-#                 #plt.show()
-#                 if dark_mode == True:
-#                     img_warped = cv2.convertScaleAbs(img_warped, alpha=2.5, beta=50)
-
-#                 st = extractSceneAndTake(img_warped, debug)
-#                 results.append(st)
-#                 print(f'scene and take {results}')
-#                 #if scene and take are good check the next frame too
-#                 # if st is a number letter then number
-#                 if st[0] == '1c' or st[1] == '2': #place holder for actual test
-#                     good_frame_found = True
-
-
-#     cap.release()
-
-#     return results
+        # Convert grayscale to RGB (TrOCR apparently expects RGB)
+        pil_image = Image.fromarray(frame_uint8).convert('RGB');
+        
+        # Process image for TrOCR
+        pixel_values = processor(pil_image, return_tensors='pt').pixel_values;
+        
+        # Generate text
+        generated_ids = model.generate(pixel_values);
+        extracted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0];
+        
+        extracted_texts.append(extracted_text);
+        print(f'  Frame {i+1}/{len(warped_frames)}: "{extracted_text}"');
+    
+    return extracted_texts;
