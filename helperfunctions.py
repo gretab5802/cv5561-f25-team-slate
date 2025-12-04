@@ -370,8 +370,8 @@ def trackMultiFrames(template, img_list, breakProcessingEarly):
     
     for i, target_img in enumerate(img_list):
 
-        if breakProcessingEarly and i >= 5:
-            print("Breaking at frame 10 for testing purposes.")
+        if breakProcessingEarly and i >= 9:
+            print("Breaking at frame 9 for testing purposes.")
             break
 
         print(f"Processing frame {i+1}/{len(img_list)}...")
@@ -545,9 +545,9 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
         
         extracted_texts.append(extracted_text);
 
-        extracted_texts = processExtractedTexts(extracted_texts);
-
         print(f'  Frame {i+1}/{len(warped_frames)}: "{extracted_text}"');
+    
+    extracted_texts = processExtractedTexts(extracted_texts);
     
     # Show visualization if requested
     if showScanBoxes:
@@ -570,9 +570,9 @@ def processExtractedTexts(extractedTexts):
     processedTexts = [];
     
     for text in extractedTexts:
-        text.upper().strip();
-        text.replace(" ", "");
-        text.replace(".", "");
+        text = text.upper().strip();
+        text = text.replace(" ", "");
+        text = text.replace(".", "");
 
         processedTexts.append(text);
     

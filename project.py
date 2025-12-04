@@ -98,7 +98,7 @@ if __name__=='__main__':
     print('extracting text from warped frames...\n');
     extracted_texts = helpers.extractTextFromFrames(warped_frames, trOCRModelName, showVisualizations);
     
-    print(f'\nExtracted texts: {extracted_texts}\n');
+    print(f'\nExtracted + Processed texts: {extracted_texts}\n');
     
     ## TODO: find most common name
     ## TODO: rename video file
