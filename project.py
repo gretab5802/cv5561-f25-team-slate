@@ -27,9 +27,10 @@ import helperFunctions as helpers
 
 videoFilePath = 'videos/8A.mp4'; ## change this for different video files
 frameInterval = 6; ## extract every 6th frame (must be multiple of 2)
-breakProcessingEarly = False; ## set to True to only process first 10 frames
-showVisualizations = False; ## set to True to display viz
-trOCRModelName = 'microsoft/trocr-base-handwritten'; ## model for text extraction
+breakProcessingEarly = True; ## set to True to only process first 10 frames
+showVisualizations = True; ## set to True to display viz
+# trOCRModelName = 'microsoft/trocr-base-handwritten'; ## model for text extraction
+trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
 
 # ----- Main Project Function -----
 
@@ -53,7 +54,7 @@ if __name__=='__main__':
     
     ## track template across all frames
     print('tracking slate across frames...\n');
-    A_list, errors_list = helpers.track_multi_frames(template, grayscale_frames, breakProcessingEarly);
+    A_list, errors_list = helpers.trackMultiFrames(template, grayscale_frames, breakProcessingEarly);
     
     print(f'processed {len(A_list)} frames\n');
     
@@ -61,7 +62,7 @@ if __name__=='__main__':
     print('warping frames to align slates...\n');
     warped_frames = [];
     for i, (gray_frame, A) in enumerate(zip(grayscale_frames, A_list)):
-        warped_frame = helpers.warp_image(gray_frame, A, template.shape);
+        warped_frame = helpers.warpImage(gray_frame, A, template.shape);
         warped_frames.append(warped_frame);
         print(f'  warped frame {i+1}/{len(A_list)}');
     
@@ -72,18 +73,18 @@ if __name__=='__main__':
         print('displaying template and all warped frames...\n');
     
         num_frames = len(warped_frames);
-        cols = min(4, num_frames + 1);  # Max 4 columns
-        rows = (num_frames + 1 + cols - 1) // cols;  # Calculate rows needed
+        cols = min(4, num_frames + 1);  ## Max 4 columns
+        rows = (num_frames + 1 + cols - 1) // cols;  ## Calculate rows needed
     
         plt.figure(figsize=(cols * 4, rows * 3));
     
-        # Show template in first subplot
+        ## Show template in first subplot
         plt.subplot(rows, cols, 1);
         plt.imshow(template, cmap='gray', vmin=0, vmax=255);
         plt.title('Template');
         plt.axis('off');
     
-        # Show all warped frames
+        ## Show all warped frames
         for i, warped_frame in enumerate(warped_frames):
             plt.subplot(rows, cols, i + 2);
             plt.imshow(warped_frame, cmap='gray', vmin=0, vmax=255);
@@ -95,7 +96,7 @@ if __name__=='__main__':
     
     ## extract text from aligned slates using TrOCR
     print('extracting text from warped frames...\n');
-    extracted_texts = helpers.extract_text_from_frames(warped_frames, trOCRModelName);
+    extracted_texts = helpers.extractTextFromFrames(warped_frames, trOCRModelName, showVisualizations);
     
     print(f'\nExtracted texts: {extracted_texts}\n');
     

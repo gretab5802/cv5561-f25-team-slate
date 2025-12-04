@@ -69,7 +69,7 @@ def extractFrames(video_filepath, frame_interval):
     
     return extracted_frames
 
-def find_match(img1, img2):
+def findMatch(img1, img2):
     x1, x2 = None, None
     dis_thr = 0.7
     
@@ -119,7 +119,7 @@ def find_match(img1, img2):
 
     return x1, x2
 
-def align_image_using_feature(x1, x2, ransac_thr, ransac_iter):
+def alignImageUsingFeature(x1, x2, ransac_thr, ransac_iter):
     A = None
 
     n = x1.shape[0]
@@ -140,7 +140,7 @@ def align_image_using_feature(x1, x2, ransac_thr, ransac_iter):
         sample_x2 = x2[indices]
         
         ## compute affine transform from these 3 points
-        A = compute_affine_transform(sample_x1, sample_x2)
+        A = computeAffineTransform(sample_x1, sample_x2)
         
         if A is None:
             continue
@@ -169,7 +169,7 @@ def align_image_using_feature(x1, x2, ransac_thr, ransac_iter):
     ## refine the affine transform using ALL inliers
     ## this gives better accuracy than using just 3 random points
     if len(best_inliers) >= 3:
-        best_A = compute_affine_transform(x1[best_inliers], x2[best_inliers])
+        best_A = computeAffineTransform(x1[best_inliers], x2[best_inliers])
     
     ## ff RANSAC failed to find any good model, just return identity - reminder to me that this means error and need to check somethign 
     if best_A is None:
@@ -177,7 +177,7 @@ def align_image_using_feature(x1, x2, ransac_thr, ransac_iter):
 
     return best_A
 
-def warp_image(img, A, output_size):
+def warpImage(img, A, output_size):
     img_warped = None
 
     h_out, w_out = output_size
@@ -229,7 +229,7 @@ def warp_image(img, A, output_size):
 
     return img_warped
 
-def align_image(template, target, A):
+def alignImage(template, target, A):
     '''  
     Input: 
         template - grayscale template image
@@ -302,9 +302,9 @@ def align_image(template, target, A):
     
     for iteration in range(max_iters):
         ## convert current parameters to affine matrix
-        A_current = params_to_affine(p)
+        A_current = paramsToAffine(p)
         
-        img_warped = warp_image(target, A_current, template.shape)
+        img_warped = warpImage(target, A_current, template.shape)
         
         I_err = img_warped - template
         
@@ -317,7 +317,7 @@ def align_image(template, target, A):
         
         delta_p = np.linalg.solve(H, F)  ## More stable than inv(H) @ F
         
-        A_delta = params_to_affine(delta_p)
+        A_delta = paramsToAffine(delta_p)
         
         ## invert A_delta
         A_delta_inv = np.linalg.inv(A_delta)
@@ -332,12 +332,12 @@ def align_image(template, target, A):
         if np.linalg.norm(delta_p) < epsilon:
             break
     
-    A_refined = params_to_affine(p)
+    A_refined = paramsToAffine(p)
     errors = np.array(errors)
     
     return A_refined, errors
 
-def track_multi_frames(template, img_list, breakProcessingEarly):
+def trackMultiFrames(template, img_list, breakProcessingEarly):
     '''
     Track template across multiple frames using inverse compositional alignment
     
@@ -370,7 +370,7 @@ def track_multi_frames(template, img_list, breakProcessingEarly):
     
     for i, target_img in enumerate(img_list):
 
-        if breakProcessingEarly and i >= 10:
+        if breakProcessingEarly and i >= 9:
             print("Breaking at frame 10 for testing purposes.")
             break
 
@@ -380,23 +380,23 @@ def track_multi_frames(template, img_list, breakProcessingEarly):
             ## FIRST FRAME: Use feature matching + RANSAC
             print("  Using feature matching for initialization...")
             
-            x1, x2 = find_match(current_template, target_img)
+            x1, x2 = findMatch(current_template, target_img)
             
-            A_init = align_image_using_feature(x1, x2, ransac_thr, ransac_iter)
+            A_init = alignImageUsingFeature(x1, x2, ransac_thr, ransac_iter)
             
         else:
             ## after initial frame, use previous A as init
             A_init = A_prev.copy()
         
         ## refine with ICIA
-        A_refined, errors = align_image(current_template, target_img, A_init)
+        A_refined, errors = alignImage(current_template, target_img, A_init)
         
         A_list.append(A_refined)
         errors_list.append(errors)
         
         ## update the template for next frame
         if i < len(img_list) - 1:  ## Don't need to update after last frame
-            current_template = warp_image(target_img, A_refined, current_template.shape)
+            current_template = warpImage(target_img, A_refined, current_template.shape)
 
             ## formattinsg
             # current_template = np.clip(current_template, 0, 255).astype(np.uint8)
@@ -406,7 +406,7 @@ def track_multi_frames(template, img_list, breakProcessingEarly):
 
     return A_list, errors_list
 
-def compute_affine_transform(x1, x2):
+def computeAffineTransform(x1, x2):
     n = x1.shape[0]
     
     ## we need at least 3 points for affine transformation so ned to check here
@@ -444,7 +444,7 @@ def compute_affine_transform(x1, x2):
     
     return A
 
-def params_to_affine(p):
+def paramsToAffine(p):
     """
     Convert 6 parameters to 3x3 affine transformation matrix with this method so i dont have to redo 
     
@@ -464,13 +464,17 @@ def params_to_affine(p):
 
     return A
 
-def extract_text_from_frames(warped_frames, model_name):
+def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
     '''
     Extract text from warped slate frames using TrOCR
+    Extracts text from the top middle portion of each frame
+    Image is divided into 6 parts: horizontally in half, top half split into 3 columns
+    where middle column is 50% of the width
     
     Parameters:
     - warped_frames (list): List of warped grayscale frames as numpy arrays
     - model_name (str): TrOCR model to use for text extraction
+    - showScanBoxes (bool): If True, display frames with bounding boxes around scan regions
     
     Returns:
     - extracted_texts (list): List of extracted text strings, one per frame
@@ -483,24 +487,68 @@ def extract_text_from_frames(warped_frames, model_name):
     
     extracted_texts = [];
     
-    print('Extracting text from warped frames...\n');
+    if showScanBoxes:
+        num_frames = len(warped_frames);
+        cols = min(4, num_frames);
+        rows = (num_frames + cols - 1) // cols;
+        plt.figure(figsize=(cols * 4, rows * 3));
     
     for i, warped_frame in enumerate(warped_frames):
-        # Convert numpy array to PIL Image
-        # Ensure the frame is in uint8 format
-        frame_uint8 = np.clip(warped_frame, 0, 255).astype(np.uint8);
+        ## Get frame dimensions
+        h, w = warped_frame.shape;
         
-        # Convert grayscale to RGB (TrOCR apparently expects RGB)
+        ## Split horizontally in half
+        top_half_height = h // 2;
+        
+        ## Split top half into 3 columns: left (25%), middle (50%), right (25%)
+        left_col_width = int(w * 0.25);
+        middle_col_width = int(w * 0.50);
+        
+        ## Calculate boundaries for top middle region
+        top_row_start = 0;
+        top_row_end = top_half_height;
+        middle_col_start = left_col_width;
+        middle_col_end = left_col_width + middle_col_width;
+        
+        if showScanBoxes:
+            # Create a copy for visualization with bounding box
+            vis_frame = warped_frame.copy();
+            
+            # Draw rectangle on the frame (need to convert to BGR for color)
+            vis_frame_rgb = cv2.cvtColor(vis_frame.astype(np.uint8), cv2.COLOR_GRAY2BGR);
+            cv2.rectangle(vis_frame_rgb, 
+                         (middle_col_start, top_row_start), 
+                         (middle_col_end, top_row_end), 
+                         (0, 255, 0), 3);  # Green rectangle, thickness 3
+            
+            plt.subplot(rows, cols, i + 1);
+            plt.imshow(vis_frame_rgb);
+            plt.title(f'Frame {i+1} - Scan Region');
+            plt.axis('off');
+        
+        ## Crop to top middle region
+        cropped_frame = warped_frame[top_row_start:top_row_end, middle_col_start:middle_col_end];
+        
+        ## Convert numpy array to PIL Image
+        ## Ensure the frame is in uint8 format
+        frame_uint8 = np.clip(cropped_frame, 0, 255).astype(np.uint8);
+        
+        ## Convert grayscale to RGB (TrOCR apparently expects RGB)
         pil_image = Image.fromarray(frame_uint8).convert('RGB');
         
-        # Process image for TrOCR
+        ## Process image for TrOCR
         pixel_values = processor(pil_image, return_tensors='pt').pixel_values;
         
-        # Generate text
+        ## Generate text
         generated_ids = model.generate(pixel_values);
         extracted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0];
         
         extracted_texts.append(extracted_text);
         print(f'  Frame {i+1}/{len(warped_frames)}: "{extracted_text}"');
+    
+    # Show visualization if requested
+    if showScanBoxes:
+        plt.tight_layout();
+        plt.show();
     
     return extracted_texts;
