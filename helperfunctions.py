@@ -370,7 +370,7 @@ def trackMultiFrames(template, img_list, breakProcessingEarly):
     
     for i, target_img in enumerate(img_list):
 
-        if breakProcessingEarly and i >= 9:
+        if breakProcessingEarly and i >= 5:
             print("Breaking at frame 10 for testing purposes.")
             break
 
@@ -543,9 +543,9 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
         generated_ids = model.generate(pixel_values);
         extracted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0];
         
-        extracted_texts = processExtractedTexts(extracted_texts);
-        
         extracted_texts.append(extracted_text);
+
+        extracted_texts = processExtractedTexts(extracted_texts);
 
         print(f'  Frame {i+1}/{len(warped_frames)}: "{extracted_text}"');
     
