@@ -27,7 +27,7 @@ import helperFunctions as helpers
 
 videoFilePath = 'videos/8A.mp4'; ## change this for different video files
 frameInterval = 6; ## extract every 6th frame (must be multiple of 2)
-breakProcessingEarly = False; ## set to True to only process first 10 frames
+breakProcessingEarly = True; ## set to True to only process first 10 frames
 showVisualizations = False; ## set to True to display viz
 # trOCRModelName = 'microsoft/trocr-base-handwritten'; ## model for text extraction
 trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction

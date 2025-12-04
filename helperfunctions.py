@@ -569,7 +569,7 @@ def processExtractedTexts(extractedTexts):
     
     processedTexts = [];
     
-    for text in extracted_texts:
+    for text in extractedTexts:
         text.upper().strip();
         text.replace(" ", "");
         text.replace(".", "");
