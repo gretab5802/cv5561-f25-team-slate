@@ -21,15 +21,19 @@ authors:
 import cv2 as opencv
 import matplotlib.pyplot as plt
 
-import helperFunctions as helpers
+import helperfunctions as helpers
 
 # ----- Global Parametsr -----
 
-videoFilePath = 'videos/8A.mp4'; ## change this for different video files
+videoFilePath = 'videos/testing.MP4'; ## change this for different video files
+filename = 'testing.MP4' ## change this for different video files, must match above
 frameInterval = 6; ## extract every 6th frame (must be multiple of 2)
 breakProcessingEarly = True; ## set to True to only process first 10 frames
-showVisualizations = False; ## set to True to display viz
-trOCRModelName = 'microsoft/trocr-base-handwritten'; ## model for text extraction
+showVisualizations = True; ## set to True to display viz
+
+trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
+#trOCRModelName = 'anuashok/ocr-captcha-v3'
+
 ## 
 
 # trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
@@ -74,6 +78,7 @@ if __name__=='__main__':
     
         ## Show all warped frames
         for i, warped_frame in enumerate(extractedFrames):
+            #?
             plt.subplot(rows, cols, i + 2);
             plt.imshow(warped_frame, cmap='gray', vmin=0, vmax=255);
             plt.title(f'Frame {i+1}');
@@ -99,9 +104,10 @@ if __name__=='__main__':
     print('warping frames to align slates...\n');
     warped_frames = [];
     for i, (gray_frame, A) in enumerate(zip(grayscale_frames, A_list)):
-        warped_frame = helpers.warpImage(gray_frame, A, template.shape);
-        warped_frames.append(warped_frame);
-        print(f'  warped frame {i+1}/{len(A_list)}');
+        if A is not 0:
+            warped_frame = helpers.warpImage(gray_frame, A, template.shape);
+            warped_frames.append(warped_frame);
+            print(f'  warped frame {i+1}/{len(A_list)}');
     
     print(f'\nwarped {len(warped_frames)} frames\n');
 
@@ -133,10 +139,26 @@ if __name__=='__main__':
     
     ## extract text from aligned slates using TrOCR
     print('extracting text from warped frames...\n');
-    extracted_texts = helpers.extractTextFromFrames(warped_frames, trOCRModelName, showVisualizations);
+    extracted_scenes = helpers.extractSceneTextFromFrames(warped_frames, trOCRModelName, showVisualizations);
+    extracted_takes = helpers.extractTakeTextFromFrames(warped_frames, trOCRModelName, showVisualizations);
     
-    print(f'\nExtracted + Processed texts: {extracted_texts}\n');
+    print(f'\nExtracted + Processed scene: {extracted_scenes}\n');
+    print(f'\nExtracted + Processed take: {extracted_takes}\n');
+
+    scene_result = helpers.findScene(extracted_scenes)
+    take_result = helpers.findTake(extracted_takes)
+
+    print(f'\nscene extracted is: {scene_result}\n');
+    print(f'\ntake extracted is: {take_result}\n');
+
+    #helpers.renameVid(filename, scene_result, take_result)
+    helpers.renameVid("videos", filename, scene_result, take_result)
     
+    ## TODO: find take via similar method
+
+
     ## TODO: find most common name
+
+
     ## TODO: rename video file
 
