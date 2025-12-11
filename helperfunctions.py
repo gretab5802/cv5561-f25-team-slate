@@ -53,10 +53,6 @@ def extractFrames(videoFilepath, frameInterval):
     # Loop through the video frames
     while cap.isOpened():
         ret, frame = cap.read()
-        #######
-
-
-
         # If frame reading was not successful, break
         if not ret:
             break
@@ -402,10 +398,6 @@ def trackMultiFrames(template, img_list, breakProcessingEarly):
                 continue
             valid, angle = get_affine_angle(A_init)
             ## add something about the size of the final box or like the ratio of the side lengths to each other
-            
-        #else:
-            ## after initial frame, use previous A as init
-            #A_init = A_prev.copy()
         
         ## refine with ICIA
         if angle > 9:
@@ -419,13 +411,6 @@ def trackMultiFrames(template, img_list, breakProcessingEarly):
         #A_list.append(A_refined)
         A_list.append(A_init)
         #errors_list.append(errors)
-        
-        ## update the template for next frame ###nope
-        #if i < len(img_list) - 1:  ## Don't need to update after last frame
-            #current_template = warpImage(target_img, A_refined, current_template.shape)
-
-            ## formattinsg
-            # current_template = np.clip(current_template, 0, 255).astype(np.uint8)
         
         ## save current affine for next frame's initialization
         #A_prev = A_refined.copy()
@@ -453,7 +438,7 @@ def is_transform_out_of_bounds(matrix, width, height): # or squashed
     is_squashed = False
     m = np.array(matrix)
     
-    # 1. Define the 4 corners of the original image (x, y)
+    #4 corners of the original image (x, y)
     # Top-Left, Top-Right, Bottom-Right, Bottom-Left
     corners = np.array([
         [0, 0],
@@ -462,17 +447,10 @@ def is_transform_out_of_bounds(matrix, width, height): # or squashed
         [0, height]
     ], dtype=np.float32)
     
-    # 2. Add a column of 1s to allow matrix multiplication
-    # Turns [[x, y]] into [[x, y, 1]]
+    #turns [[x, y]] into [[x, y, 1]]
     corners_aug = np.hstack([corners, np.ones((4, 1))])
     
-    # 3. Apply the transform (Matrix dot Vector)
-    # We transpose corners_aug to be 3x4 so we can multiply with 2x3
     transformed_corners = m.dot(corners_aug.T).T  # Result is 4x2 [[new_x, new_y], ...]
-    
-    # 4. Check boundaries
-    # We want ALL x to be (0 <= x <= width) AND ALL y to be (0 <= y <= height)
-    
     # Check x coordinates
     min_x = transformed_corners[:, 0].min()
     max_x = transformed_corners[:, 0].max()
@@ -486,12 +464,6 @@ def is_transform_out_of_bounds(matrix, width, height): # or squashed
         print('squashed :(')
     
     is_clipped = (min_x < 0) or (max_x > width) or (min_y < 0) or (max_y > height)
-    
-    # remove!
-    if is_clipped:
-        print(f"Out of bounds! X range: [{min_x:.1f}, {max_x:.1f}], Y range: [{min_y:.1f}, {max_y:.1f}]")
-    else:
-        print("Fit: The transformed image is fully inside the canvas.")
         
     return is_clipped, is_squashed
 
@@ -505,33 +477,19 @@ def get_affine_angle(matrix):
     valid = False
     m = np.array(matrix)
     
-    # 1. Extract the basis vectors (the first two columns)
-    # Vector u is from the first column (transforms the X-axis)
-    # Vector v is from the second column (transforms the Y-axis)
     u = m[0:2, 0]  # [a, c]
     v = m[0:2, 1]  # [b, d]
-    
-    # 2. Calculate Dot Product and Magnitudes
     dot_product = np.dot(u, v)
     norm_u = np.linalg.norm(u)
     norm_v = np.linalg.norm(v)
-    
-    # Safety check for collapsed shapes (scaling by 0)
     if norm_u == 0 or norm_v == 0:
         return False, 180
-
-    # 3. Calculate Cosine of the angle
     cos_theta = dot_product / (norm_u * norm_v)
-    
-    # Clip value to handled floating point errors (e.g. 1.000000002)
     cos_theta = np.clip(cos_theta, -1.0, 1.0)
-    
-    # 4. Convert to degrees
     angle_rad = np.arccos(cos_theta)
     angle_deg = np.degrees(angle_rad)
-    
-    # 5. Interpret shape
-    # We check if it's close to 90 (using a small epsilon for float comparison)
+
+    #check if it's square-ish
     if angle_deg - 90 == 0.0:
         valid = False
         print(f'too perfect 0.0')
@@ -936,4 +894,5 @@ def renameVid(folder_path, filename, scene, take, debug=False):
         print(f"To:   {new_name}")
 
     # 3. Perform the rename
+
     os.rename(old_full_path, new_full_path)
