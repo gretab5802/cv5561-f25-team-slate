@@ -839,7 +839,7 @@ def findScene(results):
     # print(f'x[0] for x in results, {(x[0] for x in results)}')
     db = (x for x in results)
     # print(db)
-    #cleanSold = [cleanScene(x[0]) for x in results]
+
     #cleanS = cleanScene(results)
     pattern = r"^\d+[A-Z]$"
     #finds most common one (use Count dict) FUTURE: maybe combine w/ findTake
@@ -877,14 +877,10 @@ def findTake(results):
         return 'None'
 
 def renameVid(folder_path, filename, scene, take, debug=False):
-    
-    # 1. Construct the full path to the EXISTING file
-    # We combine the folder path with the filename to find it
+
+    #combine the folder path with the filename to find it
     old_full_path = os.path.join(folder_path, filename)
     
-    # 2. Construct the full path for the NEW name
-    # We create the new name string (scene.take.filename)
-    # And join it with the SAME folder path so it stays there
     new_name = f"{scene}.{take}.{filename}"
     new_full_path = os.path.join(folder_path, new_name)
     
@@ -896,3 +892,4 @@ def renameVid(folder_path, filename, scene, take, debug=False):
     # 3. Perform the rename
 
     os.rename(old_full_path, new_full_path)
+
