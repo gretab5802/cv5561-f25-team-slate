@@ -25,7 +25,7 @@ import helperfunctions as helpers
 
 # ----- Global Parametsr -----
 
-videoFilePath = 'videos/8A.MP4'; ## change this for different video files
+videoFilePath = 'videos/test.MP4'; ## change this for different video files
 filename = 'test.MP4' ## change this for different video files, must match above
 frameInterval = 6; ## extract every 6th frame (must be multiple of 2)
 breakProcessingEarly = True; ## set to True to only process first 10 frames
