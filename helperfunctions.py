@@ -1,10 +1,5 @@
 '''
-Docstring for helperfunctions
-
 helper functions included in this file:
-
-- extractVidFrames
-- extract_frames_at_interval
 
 '''
 import numpy as np
@@ -13,10 +8,15 @@ import matplotlib.pyplot as plt
 
 from PIL import Image
 from transformers import TrOCRProcessor
-from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+from transformers import TrOCRProcessor, VisionEncoderDecoderModel, AutoTokenizer
 from cv2 import SIFT_create, KeyPoint_convert, filter2D
+from cv2 import resize
 from sklearn.neighbors import NearestNeighbors
 from scipy import interpolate
+import torch
+from collections import Counter
+import re
+import os
 
 def getTemplateImage():
     template = Image.open('template.jpeg');
@@ -53,14 +53,17 @@ def extractFrames(videoFilepath, frameInterval):
     # Loop through the video frames
     while cap.isOpened():
         ret, frame = cap.read()
-        
+        #######
+
+
+
         # If frame reading was not successful, break
         if not ret:
             break
         
         # Extract frame if it's at the specified interval
         if frameCount % frameInterval == 0:
-            extractedFrames.append(frame)
+            extractedFrames.append(frame) #frame
         
         frameCount += 1
     
@@ -116,6 +119,10 @@ def findMatch(img1, img2):
     for idx, (i, j) in enumerate(goodMatches):
         x1[idx] = kp1[i]
         x2[idx] = kp2[j]
+
+    if len(x1) < 5:
+        x1 = None
+        x2 = None
 
     return x1, x2
 
@@ -220,12 +227,6 @@ def warpImage(img, A, output_size):
     
     ## reshape to output dimensions
     img_warped = img_warped_flat.reshape((h_out, w_out))
-
-    ## print("output size")
-    ## print(np.meshgrid(np.arange(w_out), np.arange(h_out))[0].shape)
-
-    ## print("img_warped size")
-    ## print(img_warped.shape)
 
     return img_warped
 
@@ -367,44 +368,182 @@ def trackMultiFrames(template, img_list, breakProcessingEarly):
     
     ## initial Affine matrix
     A_prev = None
+    v = 0
     
     for i, target_img in enumerate(img_list):
-
-        if breakProcessingEarly and i >= 9:
-            print("Breaking at frame 9 for testing purposes.")
+        
+        if breakProcessingEarly and i >= 15:
+            print("Breaking at frame 10 for testing purposes.")
             break
 
         print(f"Processing frame {i+1}/{len(img_list)}...")
+        h, w = target_img.shape
         
-        if i == 0:
+        if i < 20:
             ## FIRST FRAME: Use feature matching + RANSAC
-            print("  Using feature matching for initialization...")
+            #print("  Using feature matching for initialization...")
             
             x1, x2 = findMatch(current_template, target_img)
+            if x1 is None:
+                print('bad sift')
+                continue
             
             A_init = alignImageUsingFeature(x1, x2, ransacThr, ransactIteration)
+            #visualize_align_image_using_feature(current_template, target_img, x1, x2, A_init, ransacThr)
+            # check if A is good, if it is make it the template
+            cliped, squashed = is_transform_out_of_bounds(A_init, w, h)
+            if cliped:
+                print('transform goes out of image, not using...')
+                A_list.append(0)
+                continue
+            if squashed:
+                print('transform squashes image, not using...')
+                A_list.append(0)
+                continue
+            valid, angle = get_affine_angle(A_init)
+            ## add something about the size of the final box or like the ratio of the side lengths to each other
             
-        else:
+        #else:
             ## after initial frame, use previous A as init
-            A_init = A_prev.copy()
+            #A_init = A_prev.copy()
         
         ## refine with ICIA
-        A_refined, errors = alignImage(current_template, target_img, A_init)
+        if angle > 9:
+            print(f'{i} is useless angle over 9 deg')
+            A_list.append(0)
+            continue
+        print('good, moving on')
+        #A_refined, errors = alignImage(current_template, target_img, A_init)
+        #visualize_align_image(current_template, target_img, A_init, A_refined)
         
-        A_list.append(A_refined)
-        errors_list.append(errors)
+        #A_list.append(A_refined)
+        A_list.append(A_init)
+        #errors_list.append(errors)
         
-        ## update the template for next frame
-        if i < len(img_list) - 1:  ## Don't need to update after last frame
-            current_template = warpImage(target_img, A_refined, current_template.shape)
+        ## update the template for next frame ###nope
+        #if i < len(img_list) - 1:  ## Don't need to update after last frame
+            #current_template = warpImage(target_img, A_refined, current_template.shape)
 
             ## formattinsg
             # current_template = np.clip(current_template, 0, 255).astype(np.uint8)
         
         ## save current affine for next frame's initialization
-        A_prev = A_refined.copy()
+        #A_prev = A_refined.copy()
+        if valid and v == 0:
+            v = 1
+            current_template = warpImage(target_img, A_init, current_template.shape)
+            current_template = np.clip(current_template, 0, 255).astype(np.uint8)
+            print('updating template')
 
     return A_list, errors_list
+
+def is_transform_out_of_bounds(matrix, width, height): # or squashed
+    """
+    Checks if an affine transform moves any part of the image outside the canvas.
+    
+    Args:
+        matrix: 2x3 affine transform matrix (numpy array)
+        width: Image width
+        height: Image height
+        
+    Returns:
+        True if the image is clipped/out of bounds
+        False if the image fits entirely inside
+    """
+    is_squashed = False
+    m = np.array(matrix)
+    
+    # 1. Define the 4 corners of the original image (x, y)
+    # Top-Left, Top-Right, Bottom-Right, Bottom-Left
+    corners = np.array([
+        [0, 0],
+        [width, 0],
+        [width, height],
+        [0, height]
+    ], dtype=np.float32)
+    
+    # 2. Add a column of 1s to allow matrix multiplication
+    # Turns [[x, y]] into [[x, y, 1]]
+    corners_aug = np.hstack([corners, np.ones((4, 1))])
+    
+    # 3. Apply the transform (Matrix dot Vector)
+    # We transpose corners_aug to be 3x4 so we can multiply with 2x3
+    transformed_corners = m.dot(corners_aug.T).T  # Result is 4x2 [[new_x, new_y], ...]
+    
+    # 4. Check boundaries
+    # We want ALL x to be (0 <= x <= width) AND ALL y to be (0 <= y <= height)
+    
+    # Check x coordinates
+    min_x = transformed_corners[:, 0].min()
+    max_x = transformed_corners[:, 0].max()
+    
+    # Check y coordinates
+    min_y = transformed_corners[:, 1].min()
+    max_y = transformed_corners[:, 1].max()
+    side_ratio = ((max_x - min_x) / (max_y - min_y)) 
+    if (side_ratio >= 1.9 )or (side_ratio <= .5):
+        is_squashed = True
+        print('squashed :(')
+    
+    is_clipped = (min_x < 0) or (max_x > width) or (min_y < 0) or (max_y > height)
+    
+    # remove!
+    if is_clipped:
+        print(f"Out of bounds! X range: [{min_x:.1f}, {max_x:.1f}], Y range: [{min_y:.1f}, {max_y:.1f}]")
+    else:
+        print("Fit: The transformed image is fully inside the canvas.")
+        
+    return is_clipped, is_squashed
+
+def get_affine_angle(matrix):
+    """
+    Calculates the corner angle of an affine transform.
+    Input: A 2x3 or 2x2 affine matrix (numpy array or list of lists)
+    Output: valid, angle (bool if the transform is close enough to a rectangel)
+    """
+    # Ensure it's a numpy array
+    valid = False
+    m = np.array(matrix)
+    
+    # 1. Extract the basis vectors (the first two columns)
+    # Vector u is from the first column (transforms the X-axis)
+    # Vector v is from the second column (transforms the Y-axis)
+    u = m[0:2, 0]  # [a, c]
+    v = m[0:2, 1]  # [b, d]
+    
+    # 2. Calculate Dot Product and Magnitudes
+    dot_product = np.dot(u, v)
+    norm_u = np.linalg.norm(u)
+    norm_v = np.linalg.norm(v)
+    
+    # Safety check for collapsed shapes (scaling by 0)
+    if norm_u == 0 or norm_v == 0:
+        return False, 180
+
+    # 3. Calculate Cosine of the angle
+    cos_theta = dot_product / (norm_u * norm_v)
+    
+    # Clip value to handled floating point errors (e.g. 1.000000002)
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)
+    
+    # 4. Convert to degrees
+    angle_rad = np.arccos(cos_theta)
+    angle_deg = np.degrees(angle_rad)
+    
+    # 5. Interpret shape
+    # We check if it's close to 90 (using a small epsilon for float comparison)
+    if angle_deg - 90 == 0.0:
+        valid = False
+        print(f'too perfect 0.0')
+        return valid, 180
+    elif abs(angle_deg - 90) < 3:
+        valid = True
+        print(f'within 3 degrees :{angle_deg - 90}')
+    else:
+        valid = False
+        print(f'not within 3 degrees :{angle_deg - 90}')
+        
+    return valid, abs(angle_deg - 90)
 
 def computeAffineTransform(x1, x2):
     n = x1.shape[0]
@@ -464,7 +603,8 @@ def paramsToAffine(p):
 
     return A
 
-def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
+## TODO: duplacate this for take or make a scene or take input
+def extractSceneTextFromFrames(warped_frames, model_name, showScanBoxes):
     '''
     Extract text from warped slate frames using TrOCR
     Extracts text from the top middle portion of each frame
@@ -483,7 +623,9 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
     print(f'Loading TrOCR model: {model_name}...\n');
     
     processor = TrOCRProcessor.from_pretrained(model_name);
-    model = VisionEncoderDecoderModel.from_pretrained(model_name);
+    model = VisionEncoderDecoderModel.from_pretrained('agomberto/trocr-large-handwritten-fr')
+    tokenizer = AutoTokenizer.from_pretrained('agomberto/trocr-large-handwritten-fr')
+
     
     extracted_texts = [];
     
@@ -505,7 +647,9 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
         middle_col_width = int(w * 0.40);
         
         ## Calculate boundaries for top middle region
-        top_row_start = 0;
+        # top_row_start = 0;
+        ## make top row start at a little lower
+        top_row_start = top_half_height//4
         top_row_end = top_half_height;
         middle_col_start = left_col_width;
         middle_col_end = left_col_width + middle_col_width;
@@ -519,7 +663,7 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
             cv2.rectangle(vis_frame_rgb, 
                          (middle_col_start, top_row_start), 
                          (middle_col_end, top_row_end), 
-                         (0, 255, 0), 3);  # Green rectangle, thickness 3
+                         (255, 0, 0), 20);  # red rectangle, thickness 20
             
             plt.subplot(rows, cols, i + 1);
             plt.imshow(vis_frame_rgb);
@@ -532,16 +676,26 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
         ## Convert numpy array to PIL Image
         ## Ensure the frame is in uint8 format
         frame_uint8 = np.clip(cropped_frame, 0, 255).astype(np.uint8);
+        #image = Image.open(cropped_frame).convert("RGB")
+        #image = Image.open(cropped_frame).convert("RGBA")
         
         ## Convert grayscale to RGB (TrOCR apparently expects RGB)
         pil_image = Image.fromarray(frame_uint8).convert('RGB');
-        
+        #background = Image.new("RGBA", image.size, (255, 255, 255))
+        #combined = Image.alpha_composite(background, image).convert("RGB")
+
         ## Process image for TrOCR
-        pixel_values = processor(pil_image, return_tensors='pt').pixel_values;
+        #pixel_values = processor(pil_image, return_tensors='pt').pixel_values;
+        #pixel_values = processor(combined, return_tensors="pt").pixel_values
         
         ## Generate text
-        generated_ids = model.generate(pixel_values);
-        extracted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0];
+        pixel_values = (processor(images=pil_image, return_tensors="pt").pixel_values)
+        generated_ids = model.generate(pixel_values)
+        extracted_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        #generated_ids = model.generate(pixel_values)
+        #extracted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        #generated_ids = model.generate(pixel_values);
+        #extracted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0];
         
         extracted_texts.append(extracted_text);
 
@@ -555,6 +709,139 @@ def extractTextFromFrames(warped_frames, model_name, showScanBoxes):
         plt.show();
     
     return extracted_texts;
+
+def extractTakeTextFromFrames(warped_frames, model_name, showScanBoxes):
+    '''
+    Extract text from warped slate frames using TrOCR
+    Extracts text from the top right portion of each frame
+    Image is divided into 6 parts: horizontally in half, top half split into 3 columns
+    where middle column is 50% of the width
+    
+    Parameters:
+    - warped_frames (list): List of warped grayscale frames as numpy arrays
+    - model_name (str): TrOCR model to use for text extraction
+    - showScanBoxes (bool): If True, display frames with bounding boxes around scan regions
+    
+    Returns:
+    - extracted_texts (list): List of extracted text strings, one per frame
+    '''
+    
+    print(f'Loading TrOCR model: {model_name}...\n');
+    
+    processor = TrOCRProcessor.from_pretrained(model_name);
+    model = VisionEncoderDecoderModel.from_pretrained('agomberto/trocr-large-handwritten-fr')
+    tokenizer = AutoTokenizer.from_pretrained('agomberto/trocr-large-handwritten-fr')
+
+    
+    extracted_texts = [];
+    
+    if showScanBoxes:
+        num_frames = len(warped_frames);
+        cols = min(4, num_frames);
+        rows = (num_frames + cols - 1) // cols;
+        plt.figure(figsize=(cols * 4, rows * 3));
+    
+    for i, warped_frame in enumerate(warped_frames):
+        ## Get frame dimensions
+        h, w = warped_frame.shape;
+        
+        ## Split horizontally in half
+        top_half_height = h // 2;
+        
+        ## Split top half into 3 columns: left (25%), middle (50%), right (25%)
+        left_col_width = int(w * 0.30);
+        middle_col_width = int(w * 0.40);
+        right_col_width = int(w * 0.30);
+        
+        ## Calculate boundaries for top middle region
+        #top_row_start = 0;
+        top_row_start = top_half_height//4
+        top_row_end = top_half_height;
+        middle_col_start = left_col_width;
+        middle_col_end = left_col_width + middle_col_width;
+        right_col_start = middle_col_end;
+        right_col_end = left_col_width + middle_col_width + right_col_start;
+        
+        if showScanBoxes:
+            # Create a copy for visualization with bounding box
+            vis_frame = warped_frame.copy();
+            
+            # Draw rectangle on the frame (need to convert to BGR for color)
+            vis_frame_rgb = cv2.cvtColor(vis_frame.astype(np.uint8), cv2.COLOR_GRAY2BGR);
+            cv2.rectangle(vis_frame_rgb, 
+                         (right_col_start, top_row_start), 
+                         (right_col_end, top_row_end), 
+                         (255, 0, 0), 20);  # red rectangle, thickness 3
+            
+            plt.subplot(rows, cols, i + 1);
+            plt.imshow(vis_frame_rgb);
+            plt.title(f'Frame {i+1} - Scan Region');
+            plt.axis('off');
+        
+        ## Crop to top middle region
+        cropped_frame = warped_frame[top_row_start:top_row_end, right_col_start:right_col_end];
+        
+        ## Convert numpy array to PIL Image
+        ## Ensure the frame is in uint8 format
+        frame_uint8 = np.clip(cropped_frame, 0, 255).astype(np.uint8);
+        #image = Image.open(cropped_frame).convert("RGB")
+        #image = Image.open(cropped_frame).convert("RGBA")
+        
+        ## Convert grayscale to RGB (TrOCR apparently expects RGB)
+        pil_image = Image.fromarray(frame_uint8).convert('RGB');
+        #background = Image.new("RGBA", image.size, (255, 255, 255))
+        #combined = Image.alpha_composite(background, image).convert("RGB")
+
+        ## Process image for TrOCR
+        #pixel_values = processor(pil_image, return_tensors='pt').pixel_values;
+        #pixel_values = processor(combined, return_tensors="pt").pixel_values
+        
+        ## Generate text
+        pixel_values = (processor(images=pil_image, return_tensors="pt").pixel_values)
+        generated_ids = model.generate(pixel_values)
+        extracted_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        #generated_ids = model.generate(pixel_values)
+        #extracted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        #generated_ids = model.generate(pixel_values);
+        #extracted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0];
+        
+        extracted_texts.append(extracted_text);
+
+        print(f'  Frame {i+1}/{len(warped_frames)}: "{extracted_text}"');
+    
+    extracted_texts = processExtractedTextsTake(extracted_texts);
+
+    
+    # Show visualization if requested
+    if showScanBoxes:
+        plt.tight_layout();
+        plt.show();
+    
+    return extracted_texts;
+
+def processExtractedTextsTake(extractedTexts):
+    '''
+    Process extracted texts to clean up and format as needed. For noe it will make all text uppercase and remove spaces and periods.
+    
+    Parameters:
+    - extractedTexts (list): List of raw extracted text strings
+    
+    Returns:
+    - processedTexts (list): List of cleaned/formatted text strings
+    '''
+    
+    processedTexts = [];
+    
+    for text in extractedTexts:
+        text = text.upper().strip();
+        text = text.replace(" ", "");
+        text = text.replace(".", "");
+        text = re.sub(r'\D', '', text)
+        #this will remove non numbers
+
+        processedTexts.append(text);
+    
+    return processedTexts
 
 def processExtractedTexts(extractedTexts):
     '''
@@ -572,8 +859,81 @@ def processExtractedTexts(extractedTexts):
     for text in extractedTexts:
         text = text.upper().strip();
         text = text.replace(" ", "");
+        text = text.replace("'", "");
         text = text.replace(".", "");
 
         processedTexts.append(text);
     
     return processedTexts
+
+'''clean the text'''
+def cleanScene(s, debug = False):
+    match = re.search(r"\d+[A-Z]", s) #\d+[A-Z] #\d+[A-Za-z]
+    #catches error when theres no capital Letter w/ num
+    print(f'match : {match}')
+    if not match:
+        if debug:
+            print("scene is not parsable returning none")
+        return None
+    return match[0]
+
+def findScene(results):
+    # print(f'x[0] for x in results, {(x[0] for x in results)}')
+    db = (x for x in results)
+    # print(db)
+    #cleanSold = [cleanScene(x[0]) for x in results]
+    #cleanS = cleanScene(results)
+    pattern = r"^\d+[A-Z]$"
+    #finds most common one (use Count dict) FUTURE: maybe combine w/ findTake
+    # print(f'results {results}')
+    sceneCountDict = Counter(results)
+    print(sceneCountDict)
+    modeScene = sceneCountDict.most_common(1)
+    if modeScene[0][1] == 1:
+        print('mode is 1 data point not confident')
+        return 'None'
+    #print(cleanS)
+    print(modeScene)
+    sceneRes = modeScene[0][0]
+    
+    if bool(re.match(pattern, sceneRes)):
+        return(sceneRes)
+    else:
+        print('scene result is not in corect format')
+        return 'None'
+
+    #return(sceneRes)
+
+'''calculate the predicted value of the take based on the mode of what was read'''
+def findTake(results):
+    #finds most common one
+    takeCountDict = Counter(results)
+    modeTake = takeCountDict.most_common(1)
+    #TODO: edge case when mode is a tie and or low mode
+    #print(cleanT)
+    #print(modeTake)
+    takeRes = modeTake[0][0]
+    if takeRes.isdigit():
+        return(takeRes)
+    else:
+        return 'None'
+
+def renameVid(folder_path, filename, scene, take, debug=False):
+    
+    # 1. Construct the full path to the EXISTING file
+    # We combine the folder path with the filename to find it
+    old_full_path = os.path.join(folder_path, filename)
+    
+    # 2. Construct the full path for the NEW name
+    # We create the new name string (scene.take.filename)
+    # And join it with the SAME folder path so it stays there
+    new_name = f"{scene}.{take}.{filename}"
+    new_full_path = os.path.join(folder_path, new_name)
+    
+    if debug:
+        print(f"Renaming inside {folder_path}:")
+        print(f"From: {filename}")
+        print(f"To:   {new_name}")
+
+    # 3. Perform the rename
+    os.rename(old_full_path, new_full_path)
