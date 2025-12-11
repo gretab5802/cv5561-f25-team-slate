@@ -228,12 +228,6 @@ def warpImage(img, A, output_size):
     ## reshape to output dimensions
     img_warped = img_warped_flat.reshape((h_out, w_out))
 
-    ## print("output size")
-    ## print(np.meshgrid(np.arange(w_out), np.arange(h_out))[0].shape)
-
-    ## print("img_warped size")
-    ## print(img_warped.shape)
-
     return img_warped
 
 def alignImage(template, target, A):
@@ -383,7 +377,6 @@ def trackMultiFrames(template, img_list, breakProcessingEarly):
             break
 
         print(f"Processing frame {i+1}/{len(img_list)}...")
-        #print(target_img)
         h, w = target_img.shape
         
         if i < 20:
@@ -885,14 +878,14 @@ def cleanScene(s, debug = False):
     return match[0]
 
 def findScene(results):
-    print(f'x[0] for x in results, {(x[0] for x in results)}')
+    # print(f'x[0] for x in results, {(x[0] for x in results)}')
     db = (x for x in results)
-    print(db)
+    # print(db)
     #cleanSold = [cleanScene(x[0]) for x in results]
     #cleanS = cleanScene(results)
     pattern = r"^\d+[A-Z]$"
     #finds most common one (use Count dict) FUTURE: maybe combine w/ findTake
-    print(f'results {results}')
+    # print(f'results {results}')
     sceneCountDict = Counter(results)
     print(sceneCountDict)
     modeScene = sceneCountDict.most_common(1)
@@ -925,14 +918,6 @@ def findTake(results):
     else:
         return 'None'
 
-def renameVid(filename, scene, take, debug = False):
-    
-    #TODO: rename here
-    dir, f = os.path.split(filename)
-    newName = os.path.join(dir, f"{scene}.{take}.{f}")
-    print(f"renaming {filename} to {newName}")
-    os.rename(filename, newName)
-
 def renameVid(folder_path, filename, scene, take, debug=False):
     
     # 1. Construct the full path to the EXISTING file
@@ -952,82 +937,3 @@ def renameVid(folder_path, filename, scene, take, debug=False):
 
     # 3. Perform the rename
     os.rename(old_full_path, new_full_path)
-
-
-def visualize_align_image_using_feature(img1, img2, x1, x2, A, ransac_thr, img_h=500):
-    x2_t = np.hstack((x1, np.ones((x1.shape[0], 1)))) @ A.T
-    errors = np.sum(np.square(x2_t[:, :2] - x2), axis=1)
-    mask_inliers = errors < ransac_thr
-    boundary_t = np.hstack(( np.array([[0, 0], [img1.shape[1], 0], [img1.shape[1], img1.shape[0]], [0, img1.shape[0]], [0, 0]]), np.ones((5, 1)) )) @ A[:2, :].T
-
-    scale_factor1 = img_h/img1.shape[0]
-    scale_factor2 = img_h/img2.shape[0]
-    img1_resized = resize(img1, None, fx=scale_factor1, fy=scale_factor1)
-    img2_resized = resize(img2, None, fx=scale_factor2, fy=scale_factor2)
-    x1 = x1 * scale_factor1
-    x2 = x2 * scale_factor2
-    x2[:, 0] += img1_resized.shape[1]
-    img = np.hstack((img1_resized, img2_resized))
-    plt.imshow(img, cmap='gray', vmin=0, vmax=255)
-
-    boundary_t = boundary_t * scale_factor2
-    boundary_t[:, 0] += img1_resized.shape[1]
-    plt.plot(boundary_t[:, 0], boundary_t[:, 1], 'y')
-    for i in range(x1.shape[0]):
-        if mask_inliers[i]:
-            plt.plot([x1[i, 0], x2[i, 0]], [x1[i, 1], x2[i, 1]], 'g')
-            plt.plot([x1[i, 0], x2[i, 0]], [x1[i, 1], x2[i, 1]], 'go')
-        else:
-            plt.plot([x1[i, 0], x2[i, 0]], [x1[i, 1], x2[i, 1]], 'r')
-            plt.plot([x1[i, 0], x2[i, 0]], [x1[i, 1], x2[i, 1]], 'ro')
-    plt.axis('off')
-    plt.show()
-
-def visualize_align_image(template, target, A, A_refined, errors=None):
-    img_warped_init = warpImage(target, A, template.shape)
-    img_warped_optim = warpImage(target, A_refined, template.shape)
-    err_img_init = np.abs(img_warped_init - template)
-    err_img_optim = np.abs(img_warped_optim - template)
-    img_warped_init = np.uint8(img_warped_init)
-    img_warped_optim = np.uint8(img_warped_optim)
-    overlay_init = cv2.addWeighted(template, 0.5, img_warped_init, 0.5, 0)
-    overlay_optim = cv2.addWeighted(template, 0.5, img_warped_optim, 0.5, 0)
-    plt.subplot(241)
-    plt.imshow(template, cmap='gray')
-    plt.title('Template')
-    plt.axis('off')
-    plt.subplot(242)
-    plt.imshow(img_warped_init, cmap='gray')
-    plt.title('Initial warp')
-    plt.axis('off')
-    plt.subplot(243)
-    plt.imshow(overlay_init, cmap='gray')
-    plt.title('Overlay')
-    plt.axis('off')
-    plt.subplot(244)
-    plt.imshow(err_img_init, cmap='jet')
-    plt.title('Error map')
-    plt.axis('off')
-    plt.subplot(245)
-    plt.imshow(template, cmap='gray')
-    plt.title('Template')
-    plt.axis('off')
-    plt.subplot(246)
-    plt.imshow(img_warped_optim, cmap='gray')
-    plt.title('Opt. warp')
-    plt.axis('off')
-    plt.subplot(247)
-    plt.imshow(overlay_optim, cmap='gray')
-    plt.title('Overlay')
-    plt.axis('off')
-    plt.subplot(248)
-    plt.imshow(err_img_optim, cmap='jet')
-    plt.title('Error map')
-    plt.axis('off')
-    plt.show()
-
-    if errors is not None:
-        plt.plot(errors * 255)
-        plt.xlabel('Iteration')
-        plt.ylabel('Error')
-        plt.show()

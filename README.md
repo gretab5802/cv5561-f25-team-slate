@@ -43,7 +43,7 @@ python -m venv venv
 source venv/bin/activate
 ```
 
-#### Windows (Command Prompt)
+#### Windows
 
 ```cmd
 venv\Scripts\activate
@@ -56,6 +56,14 @@ pip install -r requirements.txt
 ```
 
 ### 5. Run the Project
+
+#### macOS/Linux
+
+```bash
+python3 project.py
+```
+
+#### Windows
 
 ```bash
 python project.py

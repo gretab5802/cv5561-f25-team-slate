@@ -12,7 +12,7 @@ What should be occuring in this file
 - take the name that came up the most
 - rename video file based on that extracted text
 
-authors:
+developers:
 - Anthony
 - Genevieve
 - Greta
@@ -25,8 +25,8 @@ import helperfunctions as helpers
 
 # ----- Global Parametsr -----
 
-videoFilePath = 'videos/testing.MP4'; ## change this for different video files
-filename = 'testing.MP4' ## change this for different video files, must match above
+videoFilePath = 'videos/8A.MP4'; ## change this for different video files
+filename = 'test.MP4' ## change this for different video files, must match above
 frameInterval = 6; ## extract every 6th frame (must be multiple of 2)
 breakProcessingEarly = True; ## set to True to only process first 10 frames
 showVisualizations = True; ## set to True to display viz
