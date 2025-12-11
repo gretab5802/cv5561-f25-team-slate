@@ -29,21 +29,8 @@ videoFilePath = 'videos/testing.MP4'; ## change this for different video files
 filename = 'testing.MP4' ## change this for different video files, must match above
 frameInterval = 6; ## extract every 6th frame (must be multiple of 2)
 breakProcessingEarly = True; ## set to True to only process first 10 frames
-
 showVisualizations = True; ## set to True to display viz
-
 trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
-#trOCRModelName = 'anuashok/ocr-captcha-v3'
-
-# trOCRModelName = 'microsoft/trocr-large-handwritten'; ## model for text extraction
-## Extracted + Processed texts: ['8A1', '8A1', '8A1', '8A', '8A', '8A', '8A', '8A', '8A1']
-
-# trOCRModelName = 'microsoft/trocr-large-stage1'; ## model for text extraction
-## Extracted + Processed texts: ['BAL', '8A', 'BAL', 'BA', '8A', '8A', '8A', 'BA', 'BAL', 'BAL']
-
-# trOCRModelName = 'microsoft/trocr-large-printed'; ## model for text extraction
-## Extracted + Processed texts: ['BA', '8A', '8A', 'BA', '8A', '8A', '8A', 'BA', 'TOTAL', 'BAUL']
-
 
 # ----- Main Project Function -----
 
@@ -148,14 +135,4 @@ if __name__=='__main__':
     print(f'\nscene extracted is: {scene_result}\n');
     print(f'\ntake extracted is: {take_result}\n');
 
-    #helpers.renameVid(filename, scene_result, take_result)
     helpers.renameVid("videos", filename, scene_result, take_result)
-    
-    ## TODO: find take via similar method
-
-
-    ## TODO: find most common name
-
-
-    ## TODO: rename video file
-
